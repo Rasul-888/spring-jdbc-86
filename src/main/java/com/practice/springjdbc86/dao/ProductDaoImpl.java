@@ -2,6 +2,7 @@ package com.practice.springjdbc86.dao;
 
 import com.practice.springjdbc86.model.Category;
 import com.practice.springjdbc86.model.Product;
+import com.practice.springjdbc86.model.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,22 +21,52 @@ import java.util.List;
 public class ProductDaoImpl implements ProductDao {
 
     private final JdbcTemplate jdbcTemplate;
-    private final CategoryDao categoryDao;
+
+    private static final String BASE_SELECT = """
+            select p.id    as product_id,
+                   p.name  as product_name,
+                   p.price as product_price,
+                   c.id    as category_id,
+                   c.name  as category_name
+              from products p
+              join categories c on p.category_id = c.id
+            """;
+
+
+    private List<Tag> findTagsByProductId(int productId) {
+        String sql = """
+                select t.id, t.name 
+                  from tags t
+                  join product_tags pt on t.id = pt.tag_id
+                 where pt.product_id = ?
+                """;
+        SqlRowSet rowSet = jdbcTemplate.queryForRowSet(sql, productId);
+        List<Tag> tags = new ArrayList<>();
+        while (rowSet.next()) {
+            tags.add(new Tag(rowSet.getInt("id"),
+                    rowSet.getString("name")));
+        }
+        return tags;
+    }
 
     @Override
     public List<Product> findAll() {
-        SqlRowSet sqlRowSet = jdbcTemplate.queryForRowSet("select * from products");
+        SqlRowSet sqlRowSet = jdbcTemplate.queryForRowSet(BASE_SELECT);
         List<Product> list = new ArrayList<>();
 
         while (sqlRowSet.next()) {
-            int id = sqlRowSet.getInt("id");
-            String name = sqlRowSet.getString("name");
-            double price = sqlRowSet.getDouble("price");
+            int productId = sqlRowSet.getInt("product_id");
+            String productName = sqlRowSet.getString("product_name");
+            double productPrice = sqlRowSet.getDouble("product_price");
             int categoryId = sqlRowSet.getInt("category_id");
+            String categoryName = sqlRowSet.getString("category_name");
 
-            Category category = categoryDao.findById(categoryId);
+            Category category = new Category(categoryId, categoryName);
 
-            Product product = new Product(id, name, price, category);
+
+            List<Tag> tags = findTagsByProductId(productId);
+
+            Product product = new Product(productId, productName, productPrice, category, tags);
             list.add(product);
         }
         return list;
@@ -43,17 +74,18 @@ public class ProductDaoImpl implements ProductDao {
 
     @Override
     public Product findById(int id) {
-
-        SqlRowSet sqlRowSet = jdbcTemplate.queryForRowSet(
-                "select * from products where id = ?", id
-        );
+        String sql = BASE_SELECT + " where p.id = ?";
+        SqlRowSet sqlRowSet = jdbcTemplate.queryForRowSet(sql, id);
 
         if (sqlRowSet.next()) {
-            String name = sqlRowSet.getString("name");
-            double price = sqlRowSet.getDouble("price");
+            int productId = sqlRowSet.getInt("product_id");
+            String productName = sqlRowSet.getString("product_name");
+            double productPrice = sqlRowSet.getDouble("product_price");
             int categoryId = sqlRowSet.getInt("category_id");
-            Category category = categoryDao.findById(categoryId);
-            return new Product(id, name, price, category);
+            String categoryName = sqlRowSet.getString("category_name");
+            Category category = new Category(categoryId, categoryName);
+            List<Tag> tags = findTagsByProductId(productId);
+            return new Product(productId, productName, productPrice, category, tags);
         }
 
         throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -65,7 +97,6 @@ public class ProductDaoImpl implements ProductDao {
         KeyHolder keyHolder = new GeneratedKeyHolder();
 
         jdbcTemplate.update(connection -> {
-            // Сообщаем PostgreSQL, что нужно вернуть сгенерированное поле "id"
             PreparedStatement ps = connection.prepareStatement(sql, new String[]{"id"});
             ps.setString(1, product.getName());
             ps.setDouble(2, product.getPrice());
@@ -75,21 +106,26 @@ public class ProductDaoImpl implements ProductDao {
 
         int generatedId = keyHolder.getKey().intValue();
 
+
         return findById(generatedId);
     }
 
     @Override
     public Product update(Product product) {
         String sql = "update products set name = ?, price = ?, category_id = ? where id = ?";
-
         jdbcTemplate.update(sql,
                 product.getName(),
                 product.getPrice(),
                 product.getCategory().getId(),
                 product.getId()
         );
-
         return findById(product.getId());
+    }
+
+    @Override
+    public void addTag(int productId, int tagId) {
+        String sql = "insert into product_tags (product_id, tag_id) values (?, ?)";
+        jdbcTemplate.update(sql, productId, tagId);
     }
 
     @Override

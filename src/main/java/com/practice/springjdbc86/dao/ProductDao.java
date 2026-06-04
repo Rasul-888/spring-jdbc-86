@@ -8,5 +8,6 @@ public interface ProductDao {
     Product create(Product product);
     Product update(Product product);
     void removeById(int id);
+    void addTag(int productId, int tagId);
 }
 

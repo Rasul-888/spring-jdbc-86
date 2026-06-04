@@ -14,18 +14,23 @@ import java.util.List;
 public class ProductController {
     private final ProductDao productDao;
 
-    @GetMapping
+    @PutMapping("/{productId}/tags/{tagId}")
+    public void addTagToProduct(@PathVariable int productId, @PathVariable int tagId) {
+        productDao.addTag(productId, tagId);
+    }
+
+    @GetMapping // OK 200
     public List<Product> findAll() {
         return productDao.findAll();
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id}") // OK 200
     public Product findById(@PathVariable int id) {
         return productDao.findById(id);
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
+    @ResponseStatus(HttpStatus.CREATED) // CREATED 201
     public Product create(@RequestBody Product product) {
         return productDao.create(product);
     }
